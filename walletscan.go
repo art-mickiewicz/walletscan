@@ -53,6 +53,19 @@ func deriveAccount(wallet *hdwallet.Wallet) {
 	//fmt.Println(account.Address.Hex())
 }
 
+func makeThreadedGuesses(g Guess, numThreads int) []Guess {
+    out := make([]Guess, numThreads)
+    vPerThread := g.NumVariants() / int64(numThreads)
+    for i := 0; i < numThreads; i++ {
+        out[i] = g
+        out[i].Seek = vPerThread * int64(i)
+        if i < numThreads - 1 {
+            out[i].Limit = vPerThread * (int64(i) + 1) - 1
+        }
+    }
+    return out
+}
+
 func main() {
     argv := os.Args
     if len(argv) < 3 {
@@ -68,32 +81,41 @@ func main() {
     fmt.Printf("Guess: %s\n", guessString)
 
     guess := createGuessFromString(guessString)
-    numVariants := guess.Variants()
+    numVariants := guess.NumVariants()
     fmt.Printf("Number of variants: %d\n", numVariants)
 
     numThreads := runtime.NumCPU()
+    threadedGuesses := makeThreadedGuesses(guess, numThreads)
     runtime.GOMAXPROCS(numThreads)
     results := make(chan Result, numThreads)
+    var checkedNum int64
     Main:
     for {
         dispatched := 0
-        for dispatched < numThreads {
-            mnemonic, err := guess.Next()
+        for i := range threadedGuesses {
+            mnemonic, err := threadedGuesses[i].Next()
             if err != nil {
-                break
+                continue
             }
             go checkWallet(mnemonic, account, results)
             dispatched++
         }
 
+        /* All variants checked */
+        if dispatched == 0 {
+            break Main
+        }
+
         for i := 0; i < dispatched; i++ {
             res := <-results
+            checkedNum++
             if res.Success {
                 fmt.Printf("SUCCESS! %s\n", res.Mnemonic)
                 break Main
             }
         }
     }
+    fmt.Printf("Mnemonics checked: %d\n", checkedNum)
 }
 
 func wordlistForGlob(s string) []string {
@@ -121,9 +143,10 @@ func createGuessFromString(guessString string) Guess {
 type Guess struct {
     Words [12][]string
     Seek int64
+    Limit int64
 }
 
-func (g Guess) Variants() int64 {
+func (g Guess) NumVariants() int64 {
     var ret int64 = 1
     for i := range g.Words {
         ret *= int64(len(g.Words[i]))
@@ -133,10 +156,13 @@ func (g Guess) Variants() int64 {
 }
 
 func (g *Guess) Next() (string, error) {
+    seek := g.Seek
+    if g.Limit > 0 && seek > g.Limit {
+        return "", errors.New("Seek reached the end")
+    }
+
     wordCount := len(g.Words)
     out := make([]string, wordCount)
-    seek := g.Seek
-    //fmt.Println(seek)
 
     for i := wordCount - 1; i >= 0; i-- {
         posCount := int64(len(g.Words[i]))
