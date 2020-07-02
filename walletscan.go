@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
     "bufio"
+    "strings"
+    "errors"
 
 	"github.com/miguelmota/go-ethereum-hdwallet"
-//    "github.com/tyler-smith/go-bip39/wordlists"
+    "github.com/tyler-smith/go-bip39/wordlists"
     "github.com/ethereum/go-ethereum/accounts"
     "github.com/ethereum/go-ethereum/common"
 )
@@ -29,7 +31,8 @@ func guessFromFile(filename string) string {
 func checkWallet(mnemonic string, account accounts.Account) bool {
 	wallet, err := hdwallet.NewFromMnemonic(mnemonic)
 	if err != nil {
-		log.Fatal(err)
+        return false
+		//log.Fatal(err)
 	}
     deriveAccount(wallet)
 
@@ -61,23 +64,65 @@ func main() {
     fmt.Printf("Looking who owns %s\n", account.Address.Hex())
     fmt.Printf("Guess: %s\n", guessString)
 
-	mnemonic := guessString
-    fmt.Println(checkWallet(mnemonic, account))
+    guess := createGuessFromString(guessString)
+    for {
+	    mnemonic, err := guess.Next()
+        if err != nil {
+            break
+        }
+        if checkWallet(mnemonic, account) {
+            fmt.Printf("SUCCESS! %s\n", mnemonic)
+            break
+        }
+    }
 
     //print(wordlists.English[2])
 }
 
+func wordlistForGlob(glob string) []string {
+    if glob == "*" {
+        return wordlists.English
+    } else {
+        return []string{glob}
+    }
+}
+
+func createGuessFromString(guessString string) Guess {
+    words := strings.Fields(guessString)
+    var guess Guess
+    wordCount := len(guess.Words)
+    if len(words) != wordCount {
+        log.Fatal("Guess is misformed")
+    }
+    for i := 0; i < wordCount; i++ {
+        //guess.Words[i] = []string{words[i]}
+        guess.Words[i] = wordlistForGlob(words[i])
+    }
+
+    return guess
+}
+
 type Guess struct {
-    w01 []string
-    w02 []string
-    w03 []string
-    w04 []string
-    w05 []string
-    w06 []string
-    w07 []string
-    w08 []string
-    w09 []string
-    w10 []string
-    w11 []string
-    w12 []string
+    Words [12][]string
+    Seek int
+}
+
+func (g *Guess) Next() (string, error) {
+    wordCount := len(g.Words)
+    out := make([]string, wordCount)
+    seek := g.Seek
+    //fmt.Println(seek)
+
+    for i := wordCount - 1; i >= 0; i-- {
+        posCount := len(g.Words[i])
+        wordIdx := seek % posCount
+        seek /= posCount
+        out[i] = g.Words[i][wordIdx]
+    }
+    if seek > 0 {
+        return "", errors.New("Seek reached the end")
+    }
+
+    g.Seek++
+    return strings.Join(out, " "), nil
 }
