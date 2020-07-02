@@ -99,7 +99,6 @@ func createGuessFromString(guessString string) Guess {
     for i := 0; i < wordCount; i++ {
         guess.Words[i] = wordlistForGlob(words[i])
     }
-    fmt.Println(guess.Words)
 
     return guess
 }
