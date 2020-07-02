@@ -2,6 +2,7 @@ package main
 
 import (
     "os"
+    "runtime"
 	"fmt"
 	"log"
     "bufio"
@@ -30,15 +31,15 @@ func guessFromFile(filename string) string {
     return scanner.Text()
 }
 
-func checkWallet(mnemonic string, account accounts.Account) bool {
+func checkWallet(mnemonic string, account accounts.Account, results chan Result) {
 	wallet, err := hdwallet.NewFromMnemonic(mnemonic)
 	if err != nil {
-        return false
-		//log.Fatal(err)
+        results <- Result{Success: false, Mnemonic: mnemonic}
+        return
 	}
-    deriveAccount(wallet)
 
-    return wallet.Contains(account)
+    deriveAccount(wallet)
+    results <- Result{Success: wallet.Contains(account), Mnemonic: mnemonic}
 }
 
 func deriveAccount(wallet *hdwallet.Wallet) {
@@ -67,18 +68,32 @@ func main() {
     fmt.Printf("Guess: %s\n", guessString)
 
     guess := createGuessFromString(guessString)
+    numVariants := guess.Variants()
+    fmt.Printf("Number of variants: %d\n", numVariants)
+
+    numThreads := runtime.NumCPU()
+    runtime.GOMAXPROCS(numThreads)
+    results := make(chan Result, numThreads)
+    Main:
     for {
-	    mnemonic, err := guess.Next()
-        if err != nil {
-            break
+        dispatched := 0
+        for dispatched < numThreads {
+            mnemonic, err := guess.Next()
+            if err != nil {
+                break
+            }
+            go checkWallet(mnemonic, account, results)
+            dispatched++
         }
-        if checkWallet(mnemonic, account) {
-            fmt.Printf("SUCCESS! %s\n", mnemonic)
-            break
+
+        for i := 0; i < dispatched; i++ {
+            res := <-results
+            if res.Success {
+                fmt.Printf("SUCCESS! %s\n", res.Mnemonic)
+                break Main
+            }
         }
     }
-
-    //print(wordlists.English[2])
 }
 
 func wordlistForGlob(s string) []string {
@@ -105,7 +120,16 @@ func createGuessFromString(guessString string) Guess {
 
 type Guess struct {
     Words [12][]string
-    Seek int
+    Seek int64
+}
+
+func (g Guess) Variants() int64 {
+    var ret int64 = 1
+    for i := range g.Words {
+        ret *= int64(len(g.Words[i]))
+    }
+
+    return ret
 }
 
 func (g *Guess) Next() (string, error) {
@@ -115,7 +139,7 @@ func (g *Guess) Next() (string, error) {
     //fmt.Println(seek)
 
     for i := wordCount - 1; i >= 0; i-- {
-        posCount := len(g.Words[i])
+        posCount := int64(len(g.Words[i]))
         wordIdx := seek % posCount
         seek /= posCount
         out[i] = g.Words[i][wordIdx]
@@ -126,4 +150,9 @@ func (g *Guess) Next() (string, error) {
 
     g.Seek++
     return strings.Join(out, " "), nil
+}
+
+type Result struct {
+    Success bool
+    Mnemonic string
 }
