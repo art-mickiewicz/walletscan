@@ -7,11 +7,13 @@ import (
     "bufio"
     "strings"
     "errors"
+    "robpike.io/filter"
 
 	"github.com/miguelmota/go-ethereum-hdwallet"
     "github.com/tyler-smith/go-bip39/wordlists"
     "github.com/ethereum/go-ethereum/accounts"
     "github.com/ethereum/go-ethereum/common"
+    "gopkg.in/godo.v2/glob"
 )
 
 func guessFromFile(filename string) string {
@@ -79,12 +81,12 @@ func main() {
     //print(wordlists.English[2])
 }
 
-func wordlistForGlob(glob string) []string {
-    if glob == "*" {
-        return wordlists.English
-    } else {
-        return []string{glob}
+func wordlistForGlob(s string) []string {
+    regexp := glob.Globexp(s)
+    matches := func (w string) bool {
+        return regexp.MatchString(w)
     }
+    return filter.Choose(wordlists.English, matches).([]string)
 }
 
 func createGuessFromString(guessString string) Guess {
@@ -95,9 +97,9 @@ func createGuessFromString(guessString string) Guess {
         log.Fatal("Guess is misformed")
     }
     for i := 0; i < wordCount; i++ {
-        //guess.Words[i] = []string{words[i]}
         guess.Words[i] = wordlistForGlob(words[i])
     }
+    fmt.Println(guess.Words)
 
     return guess
 }
