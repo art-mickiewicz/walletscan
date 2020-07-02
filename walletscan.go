@@ -89,6 +89,7 @@ func main() {
     runtime.GOMAXPROCS(numThreads)
     results := make(chan Result, numThreads)
     var checkedNum int64
+    var percent int
     Main:
     for {
         dispatched := 0
@@ -109,6 +110,11 @@ func main() {
         for i := 0; i < dispatched; i++ {
             res := <-results
             checkedNum++
+            newPercent := int(checkedNum * 100 / numVariants)
+            if newPercent > percent {
+                percent = newPercent
+                fmt.Printf("%d %%\n", percent)
+            }
             if res.Success {
                 fmt.Printf("SUCCESS! %s\n", res.Mnemonic)
                 break Main
