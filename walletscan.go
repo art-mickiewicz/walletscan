@@ -34,12 +34,12 @@ func guessFromFile(filename string) string {
 func checkWallet(mnemonic string, account accounts.Account, results chan Result) {
 	wallet, err := hdwallet.NewFromMnemonic(mnemonic)
 	if err != nil {
-        results <- Result{Success: false, Mnemonic: mnemonic}
+        results <- Result{Success: false, Mnemonic: mnemonic, Valid: false}
         return
 	}
 
     deriveAccount(wallet)
-    results <- Result{Success: wallet.Contains(account), Mnemonic: mnemonic}
+    results <- Result{Success: wallet.Contains(account), Mnemonic: mnemonic, Valid: true}
 }
 
 func deriveAccount(wallet *hdwallet.Wallet) {
@@ -89,6 +89,7 @@ func main() {
     runtime.GOMAXPROCS(numThreads)
     results := make(chan Result, numThreads)
     var checkedNum int64
+    var validNum int64
     var percent int
     Main:
     for {
@@ -110,6 +111,9 @@ func main() {
         for i := 0; i < dispatched; i++ {
             res := <-results
             checkedNum++
+            if res.Valid {
+                validNum++
+            }
             newPercent := int(checkedNum * 100 / numVariants)
             if newPercent > percent {
                 percent = newPercent
@@ -121,7 +125,7 @@ func main() {
             }
         }
     }
-    fmt.Printf("Mnemonics checked: %d\n", checkedNum)
+    fmt.Printf("Mnemonics checked: %d (valid %d)\n", checkedNum, validNum)
 }
 
 func wordlistForGlob(s string) []string {
@@ -187,4 +191,5 @@ func (g *Guess) Next() (string, error) {
 type Result struct {
     Success bool
     Mnemonic string
+    Valid bool
 }
